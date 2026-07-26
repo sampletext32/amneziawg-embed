@@ -2,37 +2,13 @@ package wgembed
 
 import "golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
-type NoOpWireguardInterface struct {
-}
+type NoOpWireguardInterface struct{}
 
-func NewNoOpInterface() WireGuardInterface {
-	return &NoOpWireguardInterface{}
-}
-
-func (wg *NoOpWireguardInterface) LoadConfig(config *ConfigFile) error {
-	return nil
-}
-
-func (wg *NoOpWireguardInterface) AddPeer(publicKey string, presharedKey string, addressCIDR []string) error {
-	return nil
-}
-
-func (wg *NoOpWireguardInterface) ListPeers() ([]wgtypes.Peer, error) {
-	return []wgtypes.Peer{}, nil
-}
-
-func (wg *NoOpWireguardInterface) RemovePeer(publicKey string) error {
-	return nil
-}
-
-func (wg *NoOpWireguardInterface) PublicKey() (string, error) {
-	return "<publickey>", nil
-}
-
-func (wg *NoOpWireguardInterface) Close() error {
-	return nil
-}
-
-func (wg *NoOpWireguardInterface) Ping() error {
-	return nil
-}
+func NewNoOpInterface() WireGuardInterface                             { return &NoOpWireguardInterface{} }
+func (*NoOpWireguardInterface) LoadConfig(*ConfigFile) error           { return nil }
+func (*NoOpWireguardInterface) AddPeer(string, string, []string) error { return nil }
+func (*NoOpWireguardInterface) ListPeers() ([]wgtypes.Peer, error)     { return []wgtypes.Peer{}, nil }
+func (*NoOpWireguardInterface) RemovePeer(string) error                { return nil }
+func (*NoOpWireguardInterface) PublicKey() (string, error)             { return "<publickey>", nil }
+func (*NoOpWireguardInterface) Ping() error                            { return nil }
+func (*NoOpWireguardInterface) Close() error                           { return nil }

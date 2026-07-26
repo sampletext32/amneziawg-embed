@@ -1,93 +1,113 @@
 package wgembed
 
 import (
-	"github.com/pkg/errors"
-	"golang.zx2c4.com/wireguard/wgctrl"
+	"errors"
+	"net/netip"
+	"strconv"
+	"strings"
+
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+var ErrUnsupportedPlatform = errors.New("amneziawg-embed requires Linux")
+
 type WireGuardInterface interface {
-	LoadConfig(config *ConfigFile) error
-	AddPeer(publicKey string, presharedKey string, addressCIDR []string) error
+	LoadConfig(*ConfigFile) error
+	AddPeer(publicKey, presharedKey string, addressCIDR []string) error
 	ListPeers() ([]wgtypes.Peer, error)
 	RemovePeer(publicKey string) error
 	PublicKey() (string, error)
-	Close() error
 	Ping() error
+	Close() error
 }
 
-// Options contains configuration options for the interface
 type Options struct {
-	// InterfaceName will be the name of the network interface, this is required
-	InterfaceName string
-	// AllowKernelModule enables the usage of the WireGuard kernel module.
-	// Falls back to userspace if creation fails. No effect on Windows or Darwin
+	InterfaceName     string
 	AllowKernelModule bool
 }
 
-// New creates a wireguard interface and starts the userspace
-// wireguard configuration api
+type ConfigFile struct {
+	Interface IfaceConfig
+	Peers     []PeerConfig
+}
+type IfaceConfig struct {
+	PrivateKey string
+	Address    []string
+	ListenPort *int
+	DNS        []string
+	MTU        *int
+	Amnezia    AmneziaConfig
+}
+type PeerConfig struct {
+	PublicKey  string
+	AllowedIPs []string
+	Endpoint   *string
+}
+
+// AmneziaConfig uses pointers so omitted values remain distinct from zero.
+type AmneziaConfig struct {
+	JC, JMin, JMax                                                                                                *uint32
+	S1, S2, S3, S4                                                                                                *uint32
+	H1, H2, H3, H4                                                                                                *string
+	I1, I2, I3, I4, I5                                                                                            *string
+	HeaderProtectionKey                                                                                           string
+	ContentPaddingAddition, RekeyAfterTime, RekeyTimeout, RejectAfterTime, KeepaliveTimeout, MaxHandshakeAttempts *string
+}
+
 func New(interfaceName string) (WireGuardInterface, error) {
-	return newUserspaceInterface(interfaceName)
+	return NewWithOpts(Options{InterfaceName: interfaceName})
 }
 
-// commonInterface holds fields that are common across all wgctrl-controlled implementations
-type commonInterface struct {
-	name   string
-	client *wgctrl.Client
-	config *ConfigFile
-}
-
-// LoadConfigFile reads the given wireguard config file
-// and configures the interface
-func (wg *commonInterface) LoadConfigFile(path string) error {
-	config, err := ReadConfig(path)
-	if err != nil {
-		return errors.Wrap(err, "failed to load config file")
+func (c *ConfigFile) validate() error {
+	if c == nil {
+		return errors.New("config is nil")
 	}
-	return wg.LoadConfig(config)
-}
-
-// LoadConfig takes the given wireguard config object
-// and configures the interface
-func (wg *commonInterface) LoadConfig(config *ConfigFile) error {
-	c, err := config.Config()
-	if err != nil {
-		return errors.Wrap(err, "invalid wireguard config")
-	}
-
-	wg.config = config
-
-	if err := wg.client.ConfigureDevice(wg.Name(), *c); err != nil {
-		return errors.Wrap(err, "failed to configure wireguard")
-	}
-
-	for _, addr := range config.Interface.Address {
-		if err := wg.setIP(addr); err != nil {
-			return errors.Wrap(err, "failed to set interface ip address")
+	if c.Interface.PrivateKey != "" {
+		if _, err := wgtypes.ParseKey(c.Interface.PrivateKey); err != nil {
+			return errors.New("private key is invalid")
 		}
 	}
-
-	if err := wg.Up(); err != nil {
-		return errors.Wrap(err, "failed to bring interface up")
+	if c.Interface.ListenPort != nil && (*c.Interface.ListenPort < 0 || *c.Interface.ListenPort > 65535) {
+		return errors.New("listen port is invalid")
 	}
+	for _, a := range c.Interface.Address {
+		if _, err := netip.ParsePrefix(a); err != nil {
+			return errors.New("interface address is invalid")
+		}
+	}
+	for _, p := range c.Peers {
+		if _, err := wgtypes.ParseKey(p.PublicKey); err != nil {
+			return errors.New("peer public key is invalid")
+		}
+		for _, a := range p.AllowedIPs {
+			if _, err := netip.ParsePrefix(a); err != nil {
+				return errors.New("peer allowed IP is invalid")
+			}
+		}
+	}
+	return validateAWG(c.Interface.Amnezia)
+}
 
+func validateAWG(a AmneziaConfig) error {
+	if a.HeaderProtectionKey != "" {
+		if _, err := wgtypes.ParseKey(a.HeaderProtectionKey); err != nil {
+			return errors.New("header protection key is invalid")
+		}
+	}
+	if a.JMin != nil && a.JMax != nil && *a.JMin > *a.JMax {
+		return errors.New("jmin must be <= jmax")
+	}
+	for n, v := range map[string]*string{"h1": a.H1, "h2": a.H2, "h3": a.H3, "h4": a.H4, "i1": a.I1, "i2": a.I2, "i3": a.I3, "i4": a.I4, "i5": a.I5, "content_padding_addition": a.ContentPaddingAddition, "rekey_after_time": a.RekeyAfterTime, "rekey_timeout": a.RekeyTimeout, "reject_after_time": a.RejectAfterTime, "keepalive_timeout": a.KeepaliveTimeout, "max_handshake_attempts": a.MaxHandshakeAttempts} {
+		if v != nil && strings.TrimSpace(*v) == "" {
+			return errors.New(n + " must not be empty")
+		}
+	}
 	return nil
 }
 
-// Config returns the loaded wireguard config file
-// can return nil if no config has been loaded
-func (wg *commonInterface) Config() *ConfigFile {
-	return wg.config
-}
-
-// Device returns the wgtypes Device, this type contains
-// runtime infomation about the wireguard interface
-func (wg *commonInterface) Device() (*wgtypes.Device, error) {
-	return wg.client.Device(wg.Name())
-}
-
-// Name returns the real wireguard interface name e.g. wg0
-func (wg *commonInterface) Name() string {
-	return wg.name
+func u32(v *uint32) string {
+	if v == nil {
+		return ""
+	}
+	return strconv.FormatUint(uint64(*v), 10)
 }
