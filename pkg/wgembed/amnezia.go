@@ -121,6 +121,14 @@ func (a AmneziaConfig) IsZero() bool {
 	return true
 }
 
+// Validate reports whether the device would accept these parameters, so that a
+// caller can refuse a bad configuration at startup instead of at the first
+// handshake. LoadConfig validates as well; this is for checking before an
+// interface exists.
+func (a AmneziaConfig) Validate() error {
+	return a.validate()
+}
+
 // validate rejects what the device would reject later, so that a typo in the
 // configuration is a startup error rather than a handshake that never happens.
 func (a AmneziaConfig) validate() error {
