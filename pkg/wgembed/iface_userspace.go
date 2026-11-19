@@ -12,24 +12,32 @@
 package wgembed
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
-	"github.com/amnezia-vpn/amneziawg-go/v3/ipc"
 	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
+
+// uapiSocketDirectory is where wgctrl looks for a userspace device's UAPI
+// socket. AmneziaWG's own ipc package listens in /var/run/amneziawg, which
+// wgctrl never scans - so this implementation creates the listener here
+// instead and hands the connections to the device itself. That keeps the
+// wgctrl-based configuration (and everything built on it, including the kernel
+// route synchronisation) working unchanged.
+const uapiSocketDirectory = "/var/run/wireguard"
 
 // userspaceInterface represents an userspace wireguard-go
 // network interface
 type userspaceInterface struct {
 	commonInterface
-	device   *device.Device
-	uapi     net.Listener
-	uapiFile *os.File
+	device *device.Device
+	uapi   net.Listener
 }
 
 func newUserspaceInterface(opts Options) (WireGuardInterface, error) {
@@ -51,8 +59,7 @@ func newUserspaceInterface(opts Options) (WireGuardInterface, error) {
 		return nil, fmt.Errorf("failed to create TUN device: %w", err)
 	}
 
-	// open UAPI file (or use supplied fd)
-	fileUAPI, err := ipc.UAPIOpen(wg.name)
+	uapi, err := listenUAPI(wg.name)
 	if err != nil {
 		_ = tunDevice.Close()
 		_ = client.Close()
@@ -78,21 +85,8 @@ func newUserspaceInterface(opts Options) (WireGuardInterface, error) {
 		return wg.device.IpcSet(body)
 	}
 
-	uapi, err := ipc.UAPIListen(wg.name, fileUAPI)
-	if err != nil {
-		_ = fileUAPI.Close()
-		wg.device.Close()
-		_ = client.Close()
-		return nil, fmt.Errorf("failed to listen on uapi socket: %w", err)
-	}
 	wg.client = client
 	wg.uapi = uapi
-	// UAPIListen works on its own copy of the descriptor (net.FileListener),
-	// so ours has to be closed as well - but only in Close, after the
-	// listener. Closing it right here made wireguard-go's watcher on the socket
-	// path shut down its cancel pipe, and closing the listener later failed
-	// with "file already closed".
-	wg.uapiFile = fileUAPI
 
 	go func() {
 		for {
@@ -108,6 +102,40 @@ func newUserspaceInterface(opts Options) (WireGuardInterface, error) {
 	return wg, nil
 }
 
+// listenUAPI creates the UAPI socket where wgctrl looks for it. A leftover from
+// a run that was killed is replaced: the interface it belonged to is gone, and
+// the constructor has already refused a name that is still taken.
+func listenUAPI(name string) (net.Listener, error) {
+	if err := os.MkdirAll(uapiSocketDirectory, 0o755); err != nil {
+		return nil, err
+	}
+
+	socketPath := filepath.Join(uapiSocketDirectory, name+".sock")
+	if err := os.Remove(socketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("removing a stale UAPI socket: %w", err)
+	}
+
+	address, err := net.ResolveUnixAddr("unix", socketPath)
+	if err != nil {
+		return nil, err
+	}
+
+	listener, err := net.ListenUnix("unix", address)
+	if err != nil {
+		return nil, err
+	}
+	// The private key travels over this socket, so keep it to this user - the
+	// same mode wireguard-go's own UAPI socket has.
+	if err := os.Chmod(socketPath, 0o600); err != nil {
+		_ = listener.Close()
+		return nil, err
+	}
+	// Closing the interface removes the socket; nothing is left to dial.
+	listener.SetUnlinkOnClose(true)
+
+	return listener, nil
+}
+
 // Wait will return a channel that signals when the
 // wireguard interface is stopped
 func (wg *userspaceInterface) Wait() chan struct{} {
@@ -120,9 +148,6 @@ func (wg *userspaceInterface) Wait() chan struct{} {
 func (wg *userspaceInterface) Close() error {
 	wg.closeOnce.Do(func() {
 		wg.closeErr = wg.uapi.Close()
-		if err := wg.uapiFile.Close(); err != nil && wg.closeErr == nil {
-			wg.closeErr = err
-		}
 		wg.device.Close()
 		if err := wg.client.Close(); err != nil && wg.closeErr == nil {
 			wg.closeErr = err
