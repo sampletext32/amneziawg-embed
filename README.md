@@ -34,3 +34,26 @@ silent downgrade to plain WireGuard.
 
 See [`docs/architecture.md`](docs/architecture.md) and
 [`docs/api-compatibility.md`](docs/api-compatibility.md).
+
+## Branches
+
+- **`amnezia`** — this fork's work: `wg-embed` master plus the AmneziaWG
+  dataplane. All changes live here.
+- **`master`** — an exact mirror of
+  [`freifunkMUC/wg-embed`](https://github.com/freifunkMUC/wg-embed). It carries
+  nothing of this fork, not even its module path, and is never pushed to by
+  hand.
+
+Keeping them apart means `master` can be fast-forwarded to upstream at any
+time, and the AmneziaWG delta stays a single rebasable series:
+
+```sh
+git fetch upstream
+git switch amnezia
+git rebase upstream/master
+```
+
+Depend on the **`amnezia` branch or a tag**, never on `master`: the module path
+here is `github.com/sampletext32/amneziawg-embed`, while `master` still declares
+`github.com/freifunkMUC/wg-embed`.
+
