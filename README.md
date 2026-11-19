@@ -25,5 +25,12 @@ Two consequences of that swap:
   and the AmneziaWG parameters are sent to the device directly, once, when the
   configuration is loaded.
 
+Built against
+[`github.com/amnezia-vpn/amneziawg-go/v3`](https://github.com/amnezia-vpn/amneziawg-go)
+`v3.1.20261116`; see [`go.mod`](go.mod). AmneziaWG is a userspace dataplane, so
+the Linux implementation is the supported one — on other platforms the package
+still builds, but setting `IfaceConfig.Amnezia` there is an error rather than a
+silent downgrade to plain WireGuard.
+
 See [`docs/architecture.md`](docs/architecture.md) and
 [`docs/api-compatibility.md`](docs/api-compatibility.md).
