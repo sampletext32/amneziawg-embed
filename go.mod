@@ -1,8 +1,9 @@
-module github.com/freifunkMUC/wg-embed
+module github.com/sampletext32/amneziawg-embed
 
 go 1.26.0
 
 require (
+	github.com/amnezia-vpn/amneziawg-go/v3 v3.1.20261116
 	github.com/sirupsen/logrus v1.10.2
 	github.com/vishvananda/netlink v1.3.1
 	golang.org/x/sys v0.49.0

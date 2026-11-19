@@ -26,24 +26,13 @@ func NewWithOpts(opts Options) (WireGuardInterface, error) {
 			ErrInterfaceExists, opts.InterfaceName, opts.InterfaceName)
 	}
 
-	var kernelErr error
-	if opts.AllowKernelModule {
-		logrus.Debug("creating new kernel interface")
-		wg, err := newKernelInterface(opts)
-		if err == nil {
-			return wg, nil
-		}
-		kernelErr = err
-		logrus.Info(fmt.Errorf("falling back to embedded Go implementation: %w", err))
-	}
-
-	logrus.Debug("creating new userspace wireguard-go interface")
+	// AmneziaWG has no kernel module. A kernel WireGuard interface would ignore
+	// every AmneziaWG parameter and send plain WireGuard, so the kernel path is
+	// not taken at all; Options.AllowKernelModule stays for compatibility with
+	// wg-embed callers and is ignored on this fork.
+	logrus.Debug("creating userspace amneziawg-go interface")
 	wg, err := newUserspaceInterface(opts)
 	if err != nil {
-		if kernelErr != nil {
-			// the kernel error is usually the more telling one, so keep both
-			return nil, fmt.Errorf("kernel module: %v; embedded Go implementation: %w", kernelErr, err)
-		}
 		return nil, err
 	}
 	return wg, nil

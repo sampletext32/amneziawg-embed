@@ -70,6 +70,13 @@ type commonInterface struct {
 	routesMu     sync.Mutex
 	routes       map[string]bool
 
+	// applyAmnezia sends the AmneziaWG parameters to the device. Only the
+	// userspace implementation has a device handle to do that with, so it is
+	// nil everywhere else and setting parameters there is an error rather than
+	// a silent no-op: an operator who asked for obfuscation must not get plain
+	// WireGuard instead.
+	applyAmnezia func(AmneziaConfig) error
+
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -96,6 +103,14 @@ func (wg *commonInterface) LoadConfig(config *ConfigFile) error {
 
 	if err := wg.client.ConfigureDevice(wg.Name(), *c); err != nil {
 		return fmt.Errorf("failed to configure wireguard: %w", err)
+	}
+
+	// AmneziaWG parameters are not part of what wgctrl can send, so they go to
+	// the device separately, once, after the rest of the interface is set.
+	if !config.Interface.Amnezia.IsZero() {
+		if err := wg.setAmnezia(config.Interface.Amnezia); err != nil {
+			return fmt.Errorf("failed to configure amneziawg: %w", err)
+		}
 	}
 
 	for _, addr := range config.Interface.Address {
@@ -131,4 +146,13 @@ func (wg *commonInterface) Device() (*wgtypes.Device, error) {
 // Name returns the real wireguard interface name e.g. wg0
 func (wg *commonInterface) Name() string {
 	return wg.name
+}
+
+// setAmnezia hands the parameters to the implementation that has a device to
+// send them to.
+func (wg *commonInterface) setAmnezia(a AmneziaConfig) error {
+	if wg.applyAmnezia == nil {
+		return errors.New("amneziawg parameters are not supported by this interface implementation")
+	}
+	return wg.applyAmnezia(a)
 }

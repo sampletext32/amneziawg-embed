@@ -6,7 +6,8 @@
  * Copyright (C) 2017-2019 WireGuard LLC. All Rights Reserved.
  */
 
-// modified from https://git.zx2c4.com/wireguard-go
+// modified from https://git.zx2c4.com/wireguard-go, with the device taken from
+// the AmneziaWG fork of that implementation.
 
 package wgembed
 
@@ -15,10 +16,10 @@ import (
 	"net"
 	"os"
 
-	"golang.zx2c4.com/wireguard/conn"
-	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/ipc"
-	"golang.zx2c4.com/wireguard/tun"
+	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
+	"github.com/amnezia-vpn/amneziawg-go/v3/device"
+	"github.com/amnezia-vpn/amneziawg-go/v3/ipc"
+	"github.com/amnezia-vpn/amneziawg-go/v3/tun"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
@@ -61,6 +62,21 @@ func newUserspaceInterface(opts Options) (WireGuardInterface, error) {
 	logger := device.NewLogger(device.LogLevelError, fmt.Sprintf("(%s) ", wg.name))
 	// from here on the device owns tunDevice and closes it
 	wg.device = device.NewDevice(tunDevice, conn.NewDefaultBind(), logger)
+
+	// The AmneziaWG parameters are the one thing a UAPI client cannot set
+	// through wgctrl: they have no wgtypes.Config field. This implementation
+	// holds the device, so it sends them to it directly, over the same UAPI
+	// protocol, without touching what is already configured.
+	wg.applyAmnezia = func(a AmneziaConfig) error {
+		body, err := a.uapi()
+		if err != nil {
+			return err
+		}
+		if body == "" {
+			return nil
+		}
+		return wg.device.IpcSet(body)
+	}
 
 	uapi, err := ipc.UAPIListen(wg.name, fileUAPI)
 	if err != nil {

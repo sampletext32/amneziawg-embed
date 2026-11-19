@@ -28,6 +28,10 @@ type IfaceConfig struct {
 	ListenPort *int
 	DNS        []string
 	MTU        *int
+	// Amnezia are the AmneziaWG parameters of this interface. They are not part
+	// of a standard WireGuard configuration file: a caller sets them here
+	// directly, and an all-zero value means plain WireGuard behaviour.
+	Amnezia AmneziaConfig `ini:"-"`
 }
 
 type PeerConfig struct {

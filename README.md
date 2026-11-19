@@ -1,75 +1,29 @@
-# wg-embed: an embeddable WireGuard-Go client
+# amneziawg-embed
 
-This module allows you to embed a WireGuard client into your Go application for easy tunnel setup.
+`wg-embed` with an AmneziaWG dataplane. It is a fork of
+[`freifunkMUC/wg-embed`](https://github.com/freifunkMUC/wg-embed) and is
+intended for use under
+[`amnezia-wg-access-server`](https://github.com/sampletext32/wg-access-server).
 
-Uses the Go userspace implementation of WireGuard by default, and optionally the Linux kernel module if available.
+The fork keeps everything `wg-embed` provides — the `WireGuardInterface` API,
+config-file parsing, peer management through `wgctrl`, kernel route
+synchronisation, the no-op implementation and the platform split — and replaces
+the userspace WireGuard device with
+[`amneziawg-go`](https://github.com/amnezia-vpn/amneziawg-go). The extra
+AmneziaWG parameters (`Jc`, `Jmin`, `Jmax`, `S1`–`S4`, `H1`–`H4`, `I1`–`I5`,
+header protection key, padding and timings) are set through
+`IfaceConfig.Amnezia`.
 
-Supported OSes:
-  - Linux
+Two consequences of that swap:
 
-macOS builds and creates a userspace interface, but bringing it up and giving it
-an address are no-ops there, so it is not a working tunnel without help from
-outside this package. On Windows nothing is implemented: `New` and `NewWithOpts`
-return an error wrapping `ErrUnsupportedPlatform`, rather than an interface that
-would take the process down on first use.
+- **No kernel path.** AmneziaWG has no kernel module, and a kernel WireGuard
+  interface would silently ignore every AmneziaWG parameter. `Options`
+  `AllowKernelModule` is still accepted, so `wg-embed` callers compile
+  unchanged, but it is ignored and the userspace implementation is always used.
+- **The device is the AmneziaWG one**, so everything `wgctrl` configures (keys,
+  listen port, peers, allowed IPs) goes through the same UAPI socket as before,
+  and the AmneziaWG parameters are sent to the device directly, once, when the
+  configuration is loaded.
 
-## Interface names
-
-`NewWithOpts` refuses a name that is already taken and returns an error wrapping
-`ErrInterfaceExists`. That usually means a previous run was killed before it could
-remove its interface - for example with host networking, where the interface
-survives the process. wg-embed never removes such an interface itself, since the
-name may belong to something else on the host; delete it with
-`ip link delete <name>` if nothing else uses it.
-
-## Routes
-
-A peer's allowed IPs say what the peer may send - they do not make the kernel
-send anything there. For peers inside the interface's own subnet that makes no
-difference, since the interface's addresses come with a route each. A network
-*behind* a peer - a site, a subnet router - needs a route of its own, which is
-what `wg-quick` does with `Table = auto`.
-
-Set `ManageRoutes` in `Options` and wg-embed keeps those routes in line with the
-peers: it adds one for every allowed network the interface's addresses do not
-already reach, and removes it again with the peer.
-
-```go
-wg, err := wgembed.NewWithOpts(wgembed.Options{
-    InterfaceName:     "wg0",
-    AllowKernelModule: true,
-    ManageRoutes:      true,
-})
-```
-
-Two things it deliberately does not do:
-
-- **It never removes a route it did not add.** One set up by hand, or from a
-  lifecycle command, stays - including when a peer wants the same network.
-- **It never adds a default route.** `wg-quick` does for a client that tunnels
-  everything; on a server that would send its own traffic, the tunnel's own
-  packets included, into the tunnel.
-
-Linux only - elsewhere the option does nothing.
-
-## Secrets
-
-The private key of an interface is secret and the library treats it that way:
-
-- `ConfigFile.String()` renders everything but the private key, so a
-  configuration can be logged or printed with `%v` without leaking it.
-- `ReadConfig` warns when the file it reads may be read by anyone but its owner.
-- A pre-shared key that cannot be parsed is an error, never a log line - and
-  never silently dropped, which used to leave the peer without the key the
-  caller asked for.
-
-## Tests
-
-Tests that create interfaces need `CAP_NET_ADMIN` and `/dev/net/tun`. Run them in a
-container, as CI does:
-
-```bash
-docker run --rm --cap-add NET_ADMIN --device /dev/net/tun \
-  -v "$PWD":/src -w /src -e WGEMBED_TEST_NETADMIN=1 \
-  golang:1.27-bookworm go test -race ./...
-```
+See [`docs/architecture.md`](docs/architecture.md) and
+[`docs/api-compatibility.md`](docs/api-compatibility.md).
