@@ -9,15 +9,17 @@ Additions:
 - `IfaceConfig.Amnezia AmneziaConfig` — the AmneziaWG parameters of the
   interface, not read from a config file.
 - `AmneziaConfig` — `JC/JMin/JMax`, `S1`–`S4`, `H1`–`H4`, `I1`–`I5`,
-  `HeaderProtectionKey`, `ContentPaddingAddition`, `RekeyAfterTime`,
-  `RekeyTimeout`, `RejectAfterTime`, `KeepaliveTimeout`,
-  `MaxHandshakeAttempts`. Pointers keep "unset" distinct from zero, and
-  `AmneziaConfig.IsZero()` reports an interface that therefore behaves as plain
-  WireGuard.
+  `HeaderProtectionKey`, `RandomTrailers`, `DisableCookies`,
+  `ContentPaddingAddition`, `RekeyAfterTime`, `RekeyTimeout`,
+  `RejectAfterTime`, `KeepaliveTimeout`, `MaxHandshakeAttempts`. Pointers keep
+  "unset" distinct from zero, and `AmneziaConfig.IsZero()` reports an interface
+  that therefore behaves as plain WireGuard.
 - `AmneziaConfig` is validated when the configuration is loaded: `jmin <= jmax`,
-  non-empty range values, a parseable header protection key, and `S1`–`S4` of at
-  least 12 whenever header protection is used (the header cipher takes a
-  12-byte nonce from the start of the packet).
+  `S1`–`S4` within what the device parses (0–65535), every range value in the
+  form the device accepts (`1234` or `123-456`), every `I1`–`I5` signature packet
+  in the tag language the client parses, a parseable header protection key, and
+  `S1`–`S4` of at least 12 whenever header protection is used (the header cipher
+  takes a 12-byte nonce from the start of the packet).
 
 Behaviour differences:
 

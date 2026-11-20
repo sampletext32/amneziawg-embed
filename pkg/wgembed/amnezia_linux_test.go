@@ -38,6 +38,8 @@ func TestAmneziaParametersReachTheDevice(t *testing.T) {
 				H1:                     stringPtr("123456-123500"),
 				I1:                     stringPtr("<b 0xfee1dead><r 8>"),
 				HeaderProtectionKey:    key,
+				RandomTrailers:         true,
+				DisableCookies:         true,
 				ContentPaddingAddition: stringPtr("10-20"),
 			},
 		},
@@ -66,6 +68,8 @@ func TestAmneziaParametersReachTheDevice(t *testing.T) {
 		"h1=123456-123500",
 		"i1=<b 0xfee1dead><r 8>",
 		"header_protection_key=" + keyHex,
+		"random_trailers=1",
+		"disable_cookies=1",
 		"content_padding_addition=10-20",
 	} {
 		if !strings.Contains(raw, want) {

@@ -28,6 +28,12 @@ func TestAmneziaConfigIsZero(t *testing.T) {
 	if (AmneziaConfig{HeaderProtectionKey: key}).IsZero() {
 		t.Fatal("a header protection key alone must not count as zero")
 	}
+	if (AmneziaConfig{RandomTrailers: true}).IsZero() {
+		t.Fatal("random trailers alone must not count as zero")
+	}
+	if (AmneziaConfig{DisableCookies: true}).IsZero() {
+		t.Fatal("disabled cookies alone must not count as zero")
+	}
 }
 
 func TestAmneziaConfigValidate(t *testing.T) {
@@ -70,6 +76,54 @@ func TestAmneziaConfigValidate(t *testing.T) {
 			name:   "small padding without header protection",
 			config: AmneziaConfig{S1: uint32Ptr(8), S4: uint32Ptr(8)},
 		},
+		{
+			name:    "padding the device cannot parse",
+			config:  AmneziaConfig{S1: uint32Ptr(65536)},
+			wantErr: "s1 must not be larger than 65535",
+		},
+		{
+			name:    "a header range that is not a range",
+			config:  AmneziaConfig{H2: stringPtr("123-456-789")},
+			wantErr: "h2",
+		},
+		{
+			name:    "a header range that ends before it begins",
+			config:  AmneziaConfig{H2: stringPtr("500-400")},
+			wantErr: "ends before it begins",
+		},
+		{
+			name:    "a padding range that is not a range",
+			config:  AmneziaConfig{ContentPaddingAddition: stringPtr("ten-twenty")},
+			wantErr: "content_padding_addition",
+		},
+		{
+			name:    "a timing that is not a range",
+			config:  AmneziaConfig{RekeyAfterTime: stringPtr("soon")},
+			wantErr: "rekey_after_time",
+		},
+		{
+			name:    "a signature packet with a tag the device does not know",
+			config:  AmneziaConfig{I1: stringPtr("<b 0xf6ab3267fa><c><t>")},
+			wantErr: "uses <c>",
+		},
+		{
+			name:    "a signature packet with odd hex",
+			config:  AmneziaConfig{I1: stringPtr("<b 0x123>")},
+			wantErr: "odd number of hexadecimal digits",
+		},
+		{
+			name:    "a signature packet with no tags at all",
+			config:  AmneziaConfig{I1: stringPtr("hello")},
+			wantErr: "no <...> tag",
+		},
+		{
+			name:   "a signature packet the device accepts",
+			config: AmneziaConfig{I1: stringPtr("<b 0xc00000000108><r 8><b 0x0000><r 900>")},
+		},
+		{
+			name:   "an empty AmneziaWG section",
+			config: AmneziaConfig{},
+		},
 	}
 
 	for _, test := range tests {
@@ -103,8 +157,10 @@ func TestAmneziaConfigUAPIIsStableAndComplete(t *testing.T) {
 		S3:                     uint32Ptr(14),
 		S4:                     uint32Ptr(15),
 		H1:                     stringPtr("123456-123500"),
-		I1:                     stringPtr("<b 0xf6ab3267fa><c><t>"),
+		I1:                     stringPtr("<b 0xf6ab3267fa><r 8><t>"),
 		HeaderProtectionKey:    key,
+		RandomTrailers:         true,
+		DisableCookies:         true,
 		ContentPaddingAddition: stringPtr("10-20"),
 		MaxHandshakeAttempts:   stringPtr("5"),
 	}
@@ -123,8 +179,10 @@ func TestAmneziaConfigUAPIIsStableAndComplete(t *testing.T) {
 		"s3=14",
 		"s4=15",
 		"h1=123456-123500",
-		"i1=<b 0xf6ab3267fa><c><t>",
+		"i1=<b 0xf6ab3267fa><r 8><t>",
 		"content_padding_addition=10-20",
+		"random_trailers=1",
+		"disable_cookies=1",
 		"max_handshake_attempts=5",
 		"header_protection_key=" + keyHex,
 	}, "\n") + "\n\n" // the blank line that ends the UAPI set operation

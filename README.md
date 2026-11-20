@@ -11,8 +11,8 @@ synchronisation, the no-op implementation and the platform split — and replace
 the userspace WireGuard device with
 [`amneziawg-go`](https://github.com/amnezia-vpn/amneziawg-go). The extra
 AmneziaWG parameters (`Jc`, `Jmin`, `Jmax`, `S1`–`S4`, `H1`–`H4`, `I1`–`I5`,
-header protection key, padding and timings) are set through
-`IfaceConfig.Amnezia`.
+header protection key, random trailers, disabled cookies, content padding and
+the timings) are set through `IfaceConfig.Amnezia`.
 
 Two consequences of that swap:
 
