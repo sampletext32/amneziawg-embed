@@ -23,4 +23,5 @@ AmneziaWG.
   allowed IPs (`Options.ManageRoutes`), unchanged from upstream.
 
 On a platform other than Linux the `wg-embed` platform files still decide what
-exists; AmneziaWG itself is a Linux userspace implementation.
+exists. AmneziaWG has both a kernel module and a userspace implementation; this
+package currently only embeds the userspace one (`amneziawg-go`).

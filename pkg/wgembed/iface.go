@@ -33,8 +33,9 @@ type WireGuardInterface interface {
 type Options struct {
 	// InterfaceName will be the name of the network interface, this is required
 	InterfaceName string
-	// AllowKernelModule enables the usage of the WireGuard kernel module.
-	// Falls back to userspace if creation fails. No effect on Windows or Darwin
+	// AllowKernelModule is kept for wg-embed API compatibility. This fork has
+	// no AmneziaWG kernel backend yet, so it has no effect: the userspace
+	// device is always used. No effect on Windows or Darwin either way.
 	AllowKernelModule bool
 	// ManageRoutes keeps the kernel routing table in line with what the peers
 	// are allowed to send: every network in a peer's allowed IPs that the

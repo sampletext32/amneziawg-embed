@@ -16,10 +16,14 @@ the timings) are set through `IfaceConfig.Amnezia`.
 
 Two consequences of that swap:
 
-- **No kernel path.** AmneziaWG has no kernel module, and a kernel WireGuard
-  interface would silently ignore every AmneziaWG parameter. `Options`
-  `AllowKernelModule` is still accepted, so `wg-embed` callers compile
-  unchanged, but it is ignored and the userspace implementation is always used.
+- **Userspace only, for now.** AmneziaWG does have a Linux kernel module
+  (`amneziawg-dkms`, netlink family `amneziawg`), but this package has no
+  backend for it yet. The kernel path it inherited from `wg-embed` creates a
+  stock WireGuard interface, which would silently ignore every AmneziaWG
+  parameter, so that path is not taken. `Options.AllowKernelModule` is still
+  accepted, so `wg-embed` callers compile unchanged, but it is ignored and the
+  userspace implementation is always used. A kernel backend is planned; see
+  the workspace's `PLAN-kernel-module.md`.
 - **The device is the AmneziaWG one**, so everything `wgctrl` configures (keys,
   listen port, peers, allowed IPs) goes through the same UAPI socket as before,
   and the AmneziaWG parameters are sent to the device directly, once, when the
@@ -27,10 +31,11 @@ Two consequences of that swap:
 
 Built against
 [`github.com/amnezia-vpn/amneziawg-go/v3`](https://github.com/amnezia-vpn/amneziawg-go)
-`v3.1.20261116`; see [`go.mod`](go.mod). AmneziaWG is a userspace dataplane, so
-the Linux implementation is the supported one — on other platforms the package
-still builds, but setting `IfaceConfig.Amnezia` there is an error rather than a
-silent downgrade to plain WireGuard.
+`v3.1.20261116`; see [`go.mod`](go.mod). AmneziaWG has both a kernel module and
+a userspace implementation; this package currently only embeds the userspace
+one, so Linux is the supported platform — on other platforms the package still
+builds, but setting `IfaceConfig.Amnezia` there is an error rather than a silent
+downgrade to plain WireGuard.
 
 See [`docs/architecture.md`](docs/architecture.md) and
 [`docs/api-compatibility.md`](docs/api-compatibility.md).

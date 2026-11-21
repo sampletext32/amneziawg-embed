@@ -24,8 +24,10 @@ Additions:
 Behaviour differences:
 
 - `Options.AllowKernelModule` is ignored: the userspace implementation is always
-  used, because AmneziaWG has no kernel module and a kernel interface would drop
-  the AmneziaWG parameters.
+  used. AmneziaWG's kernel module exists (`amneziawg-dkms`, netlink family
+  `amneziawg`), but this package has no backend for it; the kernel path inherited
+  from `wg-embed` creates a stock WireGuard interface, which would drop the
+  AmneziaWG parameters.
 - Setting `IfaceConfig.Amnezia` on an interface implementation without a device
   handle is an error, never a silent no-op.
 

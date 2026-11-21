@@ -26,10 +26,13 @@ func NewWithOpts(opts Options) (WireGuardInterface, error) {
 			ErrInterfaceExists, opts.InterfaceName, opts.InterfaceName)
 	}
 
-	// AmneziaWG has no kernel module. A kernel WireGuard interface would ignore
-	// every AmneziaWG parameter and send plain WireGuard, so the kernel path is
-	// not taken at all; Options.AllowKernelModule stays for compatibility with
-	// wg-embed callers and is ignored on this fork.
+	// This fork has no AmneziaWG kernel backend yet. The kernel path inherited
+	// from wg-embed creates a stock WireGuard interface, which would ignore
+	// every AmneziaWG parameter and send plain WireGuard, so it is not taken at
+	// all; Options.AllowKernelModule stays for compatibility with wg-embed
+	// callers and is ignored. AmneziaWG's own kernel module (netlink family
+	// "amneziawg") is a different device and is not what the deleted path
+	// created.
 	logrus.Debug("creating userspace amneziawg-go interface")
 	wg, err := newUserspaceInterface(opts)
 	if err != nil {
