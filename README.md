@@ -8,8 +8,9 @@ intended for use under
 The fork keeps everything `wg-embed` provides — the `WireGuardInterface` API,
 config-file parsing, peer management through `wgctrl`, kernel route
 synchronisation, the no-op implementation and the platform split — and replaces
-the userspace WireGuard device with
-[`amneziawg-go`](https://github.com/amnezia-vpn/amneziawg-go). The extra
+the WireGuard device with AmneziaWG's: on Linux the node's `amneziawg` kernel
+module when it is usable, otherwise the embedded
+[`amneziawg-go`](https://github.com/amnezia-vpn/amneziawg-go) device. The extra
 AmneziaWG parameters (`Jc`, `Jmin`, `Jmax`, `S1`–`S4`, `H1`–`H4`, `I1`–`I5`,
 header protection key, random trailers, disabled cookies, content padding and
 the timings) are set through `IfaceConfig.Amnezia`.
