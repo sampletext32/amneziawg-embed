@@ -16,26 +16,27 @@ the timings) are set through `IfaceConfig.Amnezia`.
 
 Two consequences of that swap:
 
-- **Userspace only, for now.** AmneziaWG does have a Linux kernel module
-  (`amneziawg-dkms`, netlink family `amneziawg`), but this package has no
-  backend for it yet. The kernel path it inherited from `wg-embed` creates a
-  stock WireGuard interface, which would silently ignore every AmneziaWG
-  parameter, so that path is not taken. `Options.AllowKernelModule` is still
-  accepted, so `wg-embed` callers compile unchanged, but it is ignored and the
-  userspace implementation is always used. A kernel backend is planned; see
-  the workspace's `PLAN-kernel-module.md`.
+- **Kernel module first, userspace as the fallback.** On Linux,
+  `Options.AllowKernelModule` asks for the AmneziaWG kernel module's own device:
+  a real rtnl link of type `amneziawg`, configured through the module's
+  generic-netlink family. When the module cannot be used — not installed, not
+  loaded on the node, older than netlink family version 3, or the link cannot be
+  created — the embedded `amneziawg-go` device is used instead. Both speak the
+  same protocol, so the fallback changes where packets are processed, not
+  compatibility; the chosen dataplane is logged at startup.
 - **The device is the AmneziaWG one**, so everything `wgctrl` configures (keys,
-  listen port, peers, allowed IPs) goes through the same UAPI socket as before,
-  and the AmneziaWG parameters are sent to the device directly, once, when the
-  configuration is loaded.
+  listen port, peers, allowed IPs) keeps working, and the AmneziaWG parameters
+  are sent to the device once, when the configuration is loaded — over the UAPI
+  socket for the userspace device, as extra netlink attributes for the kernel
+  device.
 
 Built against
 [`github.com/amnezia-vpn/amneziawg-go/v3`](https://github.com/amnezia-vpn/amneziawg-go)
-`v3.1.20261116`; see [`go.mod`](go.mod). AmneziaWG has both a kernel module and
-a userspace implementation; this package currently only embeds the userspace
-one, so Linux is the supported platform — on other platforms the package still
-builds, but setting `IfaceConfig.Amnezia` there is an error rather than a silent
-downgrade to plain WireGuard.
+`v3.1.20261116`; see [`go.mod`](go.mod). The kernel dataplane exists only on
+Linux and needs the node's `amneziawg-dkms` module; elsewhere the package still
+builds with the userspace device, and setting `IfaceConfig.Amnezia` on a platform
+without a device handle is an error rather than a silent downgrade to plain
+WireGuard.
 
 See [`docs/architecture.md`](docs/architecture.md) and
 [`docs/api-compatibility.md`](docs/api-compatibility.md).

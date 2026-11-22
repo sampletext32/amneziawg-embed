@@ -22,6 +22,11 @@ AmneziaWG.
 - `routes*.go` — keeping the kernel routing table in line with the peers'
   allowed IPs (`Options.ManageRoutes`), unchanged from upstream.
 
-On a platform other than Linux the `wg-embed` platform files still decide what
-exists. AmneziaWG has both a kernel module and a userspace implementation; this
-package currently only embeds the userspace one (`amneziawg-go`).
+On Linux there are two implementations behind the same interface:
+`iface_kernel_linux.go` creates the AmneziaWG kernel module's device and
+configures it through `awgnetlink` (the module's own generic-netlink family),
+and `iface_userspace.go` drives the embedded `amneziawg-go` device over its UAPI
+socket. `NewWithOpts` tries the kernel one first when
+`Options.AllowKernelModule` is set and falls back to the userspace one when it
+cannot be created. On a platform other than Linux the `wg-embed` platform files
+still decide what exists; only the userspace device does.

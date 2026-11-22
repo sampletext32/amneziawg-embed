@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -33,9 +32,15 @@ type WireGuardInterface interface {
 type Options struct {
 	// InterfaceName will be the name of the network interface, this is required
 	InterfaceName string
-	// AllowKernelModule is kept for wg-embed API compatibility. This fork has
-	// no AmneziaWG kernel backend yet, so it has no effect: the userspace
-	// device is always used. No effect on Windows or Darwin either way.
+	// AllowKernelModule asks for the AmneziaWG kernel module's own device
+	// ("type amneziawg") first, the way wg-embed asks for the stock kernel
+	// interface. When the module cannot be used - not installed, not loaded on
+	// the node, older than netlink family version 3, or link creation refused -
+	// the implementation falls back to the embedded userspace AmneziaWG device
+	// and says so in the log. Both speak the same protocol, so the fallback
+	// changes the packet path, not compatibility.
+	//
+	// No effect on Windows or Darwin either way.
 	AllowKernelModule bool
 	// ManageRoutes keeps the kernel routing table in line with what the peers
 	// are allowed to send: every network in a peer's allowed IPs that the
@@ -57,10 +62,20 @@ func New(interfaceName string) (WireGuardInterface, error) {
 	return newUserspaceInterface(Options{InterfaceName: interfaceName})
 }
 
-// commonInterface holds fields that are common across all wgctrl-controlled implementations
+// deviceClient is the part of a device's control API that this package uses.
+// It is implemented by wgctrl's client (userspace device, over its UAPI
+// socket) and by awgnetlink's (kernel module, over generic netlink), so the
+// code above them - management.go, routes_linux.go - is the same for both.
+type deviceClient interface {
+	ConfigureDevice(name string, cfg wgtypes.Config) error
+	Device(name string) (*wgtypes.Device, error)
+	Close() error
+}
+
+// commonInterface holds fields that are common across all implementations
 type commonInterface struct {
 	name   string
-	client *wgctrl.Client
+	client deviceClient
 	config *ConfigFile
 
 	// manageRoutes is Options.ManageRoutes; routes holds the networks this
@@ -71,11 +86,11 @@ type commonInterface struct {
 	routesMu     sync.Mutex
 	routes       map[string]bool
 
-	// applyAmnezia sends the AmneziaWG parameters to the device. Only the
-	// userspace implementation has a device handle to do that with, so it is
-	// nil everywhere else and setting parameters there is an error rather than
-	// a silent no-op: an operator who asked for obfuscation must not get plain
-	// WireGuard instead.
+	// applyAmnezia sends the AmneziaWG parameters to the device: the userspace
+	// device over its UAPI socket, the kernel module as extra netlink
+	// attributes. Both implementations set it; an interface without it is an
+	// error rather than a silent no-op, because an operator who asked for
+	// obfuscation must not get plain WireGuard instead.
 	applyAmnezia func(AmneziaConfig) error
 
 	closeOnce sync.Once

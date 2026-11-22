@@ -26,16 +26,31 @@ func NewWithOpts(opts Options) (WireGuardInterface, error) {
 			ErrInterfaceExists, opts.InterfaceName, opts.InterfaceName)
 	}
 
-	// This fork has no AmneziaWG kernel backend yet. The kernel path inherited
-	// from wg-embed creates a stock WireGuard interface, which would ignore
-	// every AmneziaWG parameter and send plain WireGuard, so it is not taken at
-	// all; Options.AllowKernelModule stays for compatibility with wg-embed
-	// callers and is ignored. AmneziaWG's own kernel module (netlink family
-	// "amneziawg") is a different device and is not what the deleted path
-	// created.
-	logrus.Debug("creating userspace amneziawg-go interface")
+	// The kernel module is the first choice, as it is in wg-embed for the stock
+	// WireGuard interface: it does the crypto in-kernel, without a TUN device
+	// and the per-packet copy. When it cannot be used - not installed, not
+	// loaded on this node, older than netlink family version 3, or the link
+	// cannot be created - the userspace AmneziaWG device takes over, which
+	// speaks the same protocol and only differs in where the packets are
+	// processed.
+	var kernelErr error
+	if opts.AllowKernelModule {
+		logrus.Debug("creating the AmneziaWG kernel interface")
+		wg, err := newKernelInterface(opts)
+		if err == nil {
+			return wg, nil
+		}
+		kernelErr = err
+		logrus.Infof("dataplane: userspace (kernel device unavailable: %v)", err)
+	}
+
+	logrus.Debug("creating the userspace amneziawg-go interface")
 	wg, err := newUserspaceInterface(opts)
 	if err != nil {
+		if kernelErr != nil {
+			// the kernel error is usually the more telling one, so keep both
+			return nil, fmt.Errorf("kernel module: %v; embedded userspace device: %w", kernelErr, err)
+		}
 		return nil, err
 	}
 	return wg, nil
