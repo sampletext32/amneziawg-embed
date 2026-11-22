@@ -44,7 +44,7 @@ See [`docs/architecture.md`](docs/architecture.md) and
 
 ## Branches
 
-- **`amnezia`** — this fork's work: `wg-embed` master plus the AmneziaWG
+- **`amneziawg`** — this fork's work: `wg-embed` master plus the AmneziaWG
   dataplane. All changes live here.
 - **`master`** — an exact mirror of
   [`freifunkMUC/wg-embed`](https://github.com/freifunkMUC/wg-embed). It carries
@@ -56,11 +56,11 @@ time, and the AmneziaWG delta stays a single rebasable series:
 
 ```sh
 git fetch upstream
-git switch amnezia
+git switch amneziawg
 git rebase upstream/master
 ```
 
-Depend on the **`amnezia` branch or a tag**, never on `master`: the module path
+Depend on the **`amneziawg` branch or a tag**, never on `master`: the module path
 here is `github.com/sampletext32/amneziawg-embed`, while `master` still declares
 `github.com/freifunkMUC/wg-embed`.
 
