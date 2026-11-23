@@ -6,13 +6,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/mdlayher/netlink"
 	"golang.org/x/sys/unix"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+
+	"github.com/sampletext32/amneziawg-embed/pkg/wgembed/awgspec"
 )
 
 // AmneziaConfig is the AmneziaWG parameter set of a device. It mirrors
@@ -73,7 +73,7 @@ func (a AmneziaConfig) validate() error {
 		name  string
 		value *uint32
 	}{{"jc", a.JC}, {"jmin", a.JMin}, {"jmax", a.JMax}, {"s1", a.S1}, {"s2", a.S2}, {"s3", a.S3}, {"s4", a.S4}} {
-		if field.value != nil && *field.value > 65535 {
+		if field.value != nil && *field.value > awgspec.MaxUint16 {
 			return fmt.Errorf("%s is %d, which does not fit the kernel module's 16-bit attribute", field.name, *field.value)
 		}
 	}
@@ -88,7 +88,7 @@ func (a AmneziaConfig) validate() error {
 		if field.value == nil {
 			continue
 		}
-		if _, _, err := parseUintRange(field.name, *field.value); err != nil {
+		if _, _, err := awgspec.ParseUintRange(field.name, *field.value); err != nil {
 			return err
 		}
 	}
@@ -107,11 +107,11 @@ func (a AmneziaConfig) validate() error {
 		if field.value == nil {
 			continue
 		}
-		lo, hi, err := parseUintRange(field.name, *field.value)
+		lo, hi, err := awgspec.ParseUintRange(field.name, *field.value)
 		if err != nil {
 			return err
 		}
-		if lo > 65535 || hi > 65535 {
+		if lo > awgspec.MaxPackedRangeValue || hi > awgspec.MaxPackedRangeValue {
 			return fmt.Errorf("%s (%q) does not fit the kernel module's 16-bit range", field.name, *field.value)
 		}
 	}
@@ -133,17 +133,13 @@ func (a AmneziaConfig) validate() error {
 			name  string
 			value *uint32
 		}{{"s1", a.S1}, {"s2", a.S2}, {"s3", a.S3}, {"s4", a.S4}} {
-			if field.value != nil && *field.value < headerCipherNonceSize {
-				return fmt.Errorf("header protection needs %s of at least %d", field.name, headerCipherNonceSize)
+			if field.value != nil && *field.value < awgspec.HeaderCipherNonceSize {
+				return fmt.Errorf("header protection needs %s of at least %d", field.name, awgspec.HeaderCipherNonceSize)
 			}
 		}
 	}
 	return nil
 }
-
-// headerCipherNonceSize is the 12-byte nonce of the header cipher: padding
-// smaller than this would encrypt real header bytes.
-const headerCipherNonceSize = 12
 
 // encodeAmnezia writes the AWG device attributes into enc.
 func encodeAmnezia(enc *netlink.AttributeEncoder, a AmneziaConfig) error {
@@ -169,7 +165,7 @@ func encodeAmnezia(enc *netlink.AttributeEncoder, a AmneziaConfig) error {
 		if field.value == nil {
 			continue
 		}
-		lo, hi, err := parseUintRange("h", *field.value)
+		lo, hi, err := awgspec.ParseUintRange("h", *field.value)
 		if err != nil {
 			return err
 		}
@@ -218,7 +214,7 @@ func encodeAmnezia(enc *netlink.AttributeEncoder, a AmneziaConfig) error {
 		if field.value == nil {
 			continue
 		}
-		lo, hi, err := parseUintRange(field.name, *field.value)
+		lo, hi, err := awgspec.ParseUintRange(field.name, *field.value)
 		if err != nil {
 			return err
 		}
@@ -241,35 +237,11 @@ func putU16(enc *netlink.AttributeEncoder, attr uint16, value *uint32) {
 	}
 }
 
-// parseUintRange accepts what AmneziaWG accepts for a range: one decimal
-// number, or two separated by a single "-".
-func parseUintRange(name, value string) (uint32, uint32, error) {
-	parts := strings.Split(value, "-")
-	if len(parts) < 1 || len(parts) > 2 {
-		return 0, 0, fmt.Errorf("%s: %q is not a number or a range", name, value)
-	}
-	lo, err := strconv.ParseUint(parts[0], 10, 32)
-	if err != nil {
-		return 0, 0, fmt.Errorf("%s: %q is not a number or a range", name, value)
-	}
-	if len(parts) == 1 {
-		return uint32(lo), uint32(lo), nil
-	}
-	hi, err := strconv.ParseUint(parts[1], 10, 32)
-	if err != nil {
-		return 0, 0, fmt.Errorf("%s: %q is not a number or a range", name, value)
-	}
-	if hi < lo {
-		return 0, 0, fmt.Errorf("%s: %q ends before it begins", name, value)
-	}
-	return uint32(lo), uint32(hi), nil
-}
-
 // packedSeconds encodes a keepalive interval as the v3 attribute expects it: a
 // u16 range packed into u32. A single value N becomes the range N-N.
 func packedSeconds(interval time.Duration) (uint32, error) {
 	seconds := int64(interval / time.Second)
-	if seconds < 0 || seconds > 65535 {
+	if seconds < 0 || seconds > awgspec.MaxPackedRangeValue {
 		return 0, fmt.Errorf("persistent keepalive %s does not fit the kernel module's 16-bit range", interval)
 	}
 	return uint32(seconds) | uint32(seconds)<<16, nil

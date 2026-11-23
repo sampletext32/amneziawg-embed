@@ -97,6 +97,17 @@ func TestAmneziaConfigValidate(t *testing.T) {
 			wantErr: "content_padding_addition",
 		},
 		{
+			name:   "content padding at the limit",
+			config: AmneziaConfig{ContentPaddingAddition: stringPtr("0-65535")},
+		},
+		{
+			// The kernel packs this into one 16-bit range, so a larger value
+			// would be accepted here and refused only on a kernel node.
+			name:    "content padding the kernel cannot carry",
+			config:  AmneziaConfig{ContentPaddingAddition: stringPtr("0-70000")},
+			wantErr: "16-bit range",
+		},
+		{
 			name:    "a timing that is not a range",
 			config:  AmneziaConfig{RekeyAfterTime: stringPtr("soon")},
 			wantErr: "rekey_after_time",

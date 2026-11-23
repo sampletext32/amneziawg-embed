@@ -115,7 +115,9 @@ func (c *Client) FamilyVersion() uint8 { return c.family.Version }
 // Close releases the netlink socket.
 func (c *Client) Close() error { return c.c.Close() }
 
-// execute sends one command to the family and returns the reply messages.
+// execute sends one command to the family and returns the reply messages. A
+// failure names the operation, so a kernel error is read in context rather than
+// as a bare errno.
 func (c *Client) execute(command uint8, flags netlink.HeaderFlags, attrs []byte) ([]genetlink.Message, error) {
 	msg := genetlink.Message{
 		Header: genetlink.Header{
@@ -132,9 +134,21 @@ func (c *Client) execute(command uint8, flags netlink.HeaderFlags, attrs []byte)
 
 	var oerr *netlink.OpError
 	if errors.As(err, &oerr) {
-		return nil, oerr.Err
+		return nil, fmt.Errorf("amneziawg netlink: %s: %w", commandName(command), oerr.Err)
 	}
-	return nil, err
+	return nil, fmt.Errorf("amneziawg netlink: %s: %w", commandName(command), err)
+}
+
+// commandName is the operation half of an error message.
+func commandName(command uint8) string {
+	switch command {
+	case unix.WG_CMD_GET_DEVICE:
+		return "get device"
+	case unix.WG_CMD_SET_DEVICE:
+		return "set device"
+	default:
+		return fmt.Sprintf("command %d", command)
+	}
 }
 
 // ConfigureDevice applies the stock WireGuard fields of cfg: private key,

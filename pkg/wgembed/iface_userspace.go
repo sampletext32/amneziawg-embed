@@ -111,6 +111,12 @@ func listenUAPI(name string) (net.Listener, error) {
 	}
 
 	socketPath := filepath.Join(uapiSocketDirectory, name+".sock")
+	// A path that is not a socket is not a leftover of ours. Refuse to remove
+	// it rather than take somebody else's file with it; Lstat does not follow a
+	// symlink planted there.
+	if info, err := os.Lstat(socketPath); err == nil && info.Mode().Type() != os.ModeSocket {
+		return nil, fmt.Errorf("%s exists and is not a UAPI socket (mode %s); refusing to remove it", socketPath, info.Mode())
+	}
 	if err := os.Remove(socketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("removing a stale UAPI socket: %w", err)
 	}

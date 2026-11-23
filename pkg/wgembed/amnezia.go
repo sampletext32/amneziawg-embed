@@ -8,18 +8,8 @@ import (
 	"strings"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
-)
 
-const (
-	// headerCipherNonceSize is the number of leading bytes AmneziaWG's header
-	// cipher takes as its nonce. Padding smaller than this would encrypt real
-	// header bytes, so a header protection key requires S1-S4 of at least this.
-	headerCipherNonceSize = 12
-
-	// maxPaddingSize is the largest S1-S4 the device accepts: it parses them as
-	// 16-bit values, so anything larger fails when the parameters are applied
-	// rather than when they are read.
-	maxPaddingSize = 65535
+	"github.com/sampletext32/amneziawg-embed/pkg/wgembed/awgspec"
 )
 
 // AmneziaConfig holds the AmneziaWG parameters of an interface. Pointers keep
@@ -125,8 +115,9 @@ func (a AmneziaConfig) amneziaFields() []amneziaField {
 		{"max_handshake_attempts", s(a.MaxHandshakeAttempts)},
 	}
 	if a.HeaderProtectionKey != "" {
-		// ParseKey has already been checked by validate; the zero value keeps
-		// this list-building function total.
+		// validate has already parsed the key on every path that reaches this,
+		// so it cannot fail here; if it somehow did, the empty encoding is
+		// dropped rather than sent as a key with no value.
 		var encoded string
 		if key, err := wgtypes.ParseKey(a.HeaderProtectionKey); err == nil {
 			encoded = hex.EncodeToString(key[:])
@@ -174,8 +165,8 @@ func (a AmneziaConfig) validate() error {
 			name  string
 			value *uint32
 		}{{"s1", a.S1}, {"s2", a.S2}, {"s3", a.S3}, {"s4", a.S4}} {
-			if padding.value != nil && *padding.value < headerCipherNonceSize {
-				return fmt.Errorf("header protection needs %s of at least %d", padding.name, headerCipherNonceSize)
+			if padding.value != nil && *padding.value < awgspec.HeaderCipherNonceSize {
+				return fmt.Errorf("header protection needs %s of at least %d", padding.name, awgspec.HeaderCipherNonceSize)
 			}
 		}
 	}
@@ -193,19 +184,39 @@ func (a AmneziaConfig) validateValues() error {
 		name  string
 		value *uint32
 	}{{"s1", a.S1}, {"s2", a.S2}, {"s3", a.S3}, {"s4", a.S4}} {
-		if field.value != nil && *field.value > maxPaddingSize {
-			return fmt.Errorf("%s must not be larger than %d, the largest padding AmneziaWG accepts", field.name, maxPaddingSize)
+		if field.value != nil && *field.value > awgspec.MaxPaddingSize {
+			return fmt.Errorf("%s must not be larger than %d, the largest padding AmneziaWG accepts", field.name, awgspec.MaxPaddingSize)
 		}
 	}
 
-	// These are uint32 ranges on the wire, for the device and for a client:
-	// "1234" or "123-456". The syntax is the device's, without trimming, so
-	// that a value which passes here is one the device will accept too.
+	// Header ranges are uint32 ranges on the wire, for the device and for a
+	// client: "1234" or "123-456". The syntax is the device's, without
+	// trimming, so that a value which passes here is one the device accepts.
 	for _, field := range []struct {
 		name  string
 		value *string
 	}{
 		{"h1", a.H1}, {"h2", a.H2}, {"h3", a.H3}, {"h4", a.H4},
+	} {
+		if field.value == nil {
+			continue
+		}
+		if strings.TrimSpace(*field.value) == "" {
+			return fmt.Errorf("%s must not be empty", field.name)
+		}
+		if _, _, err := awgspec.ParseUintRange(field.name, *field.value); err != nil {
+			return err
+		}
+	}
+
+	// Content padding and the timers are one 16-bit range packed into a single
+	// attribute by the kernel module, so a value above 65535 cannot be carried
+	// there even though a uint32 would fit the userspace UAPI. Refusing it here
+	// keeps one profile valid on both dataplanes.
+	for _, field := range []struct {
+		name  string
+		value *string
+	}{
 		{"content_padding_addition", a.ContentPaddingAddition},
 		{"rekey_after_time", a.RekeyAfterTime},
 		{"rekey_timeout", a.RekeyTimeout},
@@ -219,8 +230,12 @@ func (a AmneziaConfig) validateValues() error {
 		if strings.TrimSpace(*field.value) == "" {
 			return fmt.Errorf("%s must not be empty", field.name)
 		}
-		if err := validateUintRange(field.name, *field.value); err != nil {
+		low, high, err := awgspec.ParseUintRange(field.name, *field.value)
+		if err != nil {
 			return err
+		}
+		if low > awgspec.MaxPackedRangeValue || high > awgspec.MaxPackedRangeValue {
+			return fmt.Errorf("%s (%q) does not fit the 16-bit range the kernel module carries it in", field.name, *field.value)
 		}
 	}
 
@@ -241,29 +256,6 @@ func (a AmneziaConfig) validateValues() error {
 		}
 		if err := validateObfSpec(field.name, *field.value); err != nil {
 			return err
-		}
-	}
-	return nil
-}
-
-// validateUintRange accepts exactly what AmneziaWG's UintRange.FromString
-// accepts: one 32-bit decimal number, or two separated by a single "-".
-func validateUintRange(name, value string) error {
-	parts := strings.Split(value, "-")
-	if len(parts) < 1 || len(parts) > 2 {
-		return fmt.Errorf("%s: %q is not a number or a range", name, value)
-	}
-	low, err := strconv.ParseUint(parts[0], 10, 32)
-	if err != nil {
-		return fmt.Errorf("%s: %q is not a number or a range", name, value)
-	}
-	if len(parts) == 2 {
-		high, err := strconv.ParseUint(parts[1], 10, 32)
-		if err != nil {
-			return fmt.Errorf("%s: %q is not a number or a range", name, value)
-		}
-		if high < low {
-			return fmt.Errorf("%s: %q ends before it begins", name, value)
 		}
 	}
 	return nil
